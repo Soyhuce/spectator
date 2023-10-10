@@ -13,15 +13,15 @@ abstract class AbstractValidator
     /**
      * Check if properties exist, and if so, prepare them based on version.
      *
-     * @param  Schema  $schema
-     * @param  string|null  $mode  Access mode 'read' or 'write'
+     * @param Schema $schema
+     * @param string|null $mode Access mode 'read' or 'write'
      * @return mixed
      */
     protected function prepareData(Schema $schema, string $mode = null)
     {
         $data = $schema->getSerializableData();
 
-        if (! isset($data->properties)) {
+        if (!isset($data->properties)) {
             return $data;
         }
 
@@ -42,7 +42,7 @@ abstract class AbstractValidator
      * Filters out readonly|writeonly properties.
      *
      * @param  $data
-     * @param  string|null  $type  Access mode 'read' or 'write'
+     * @param string|null $type Access mode 'read' or 'write'
      * @return mixed
      */
     protected function filterProperties(object $data, string $mode = null): object
@@ -62,44 +62,83 @@ abstract class AbstractValidator
                 return $data;
         }
 
-        if (isset($data->properties)) {
-            /**
-             * Create a new array of properties that need to be filtered out.
-             */
-            $filter_properties = array_keys(
-                array_filter(
-                    (array) $data->properties,
-                    function ($property) use ($filter_by) {
-                        return isset($property->$filter_by) && $property->$filter_by === true;
-                    },
-                )
+        if (isset($data->type) && $data->type === 'object') {
+            $data->properties ??= new \stdClass();
+        }
+
+        if (!isset($data->properties) ) {
+            return $this->parseProperty($data, $mode);
+        }
+
+        /**
+         * Create a new array of properties that need to be filtered out.
+         */
+        $filter_properties = array_keys(
+            array_filter(
+                (array) $data->properties,
+                function ($property) use ($filter_by) {
+                    return isset($property->$filter_by) && $property->$filter_by === true;
+                },
+            )
+        );
+
+        /**
+         * Filter out properties from schema's properties.
+         */
+        foreach ($filter_properties as $property) {
+            unset($data->properties->$property);
+        }
+
+        /**
+         * Filter out properties from schema's required properties array.
+         * (Skip if nothing to filter out).
+         */
+        if (isset($data->required)) {
+            $data->required = array_filter(
+                $data->required,
+                function ($property) use ($filter_properties) {
+                    return !in_array($property, $filter_properties);
+                },
             );
+        }
 
-            /**
-             * Filter out properties from schema's properties.
-             */
-            foreach ($filter_properties as $property) {
-                unset($data->properties->$property);
+        foreach ($data->properties as $key => $property) {
+            if (isset($property->type)) {
+                $type = $property->type;
+            } elseif (isset($property->anyOf)) {
+                $type = 'anyOf';
+            } elseif (isset($property->allOf)) {
+                $type = 'allOf';
+            } elseif (isset($property->oneOf)) {
+                $type = 'oneOf';
+            } else {
+                $type = null;
             }
 
-            /**
-             * Filter out properties from schema's required properties array.
-             * (Skip if nothing to filter out).
-             */
-            if (isset($data->required)) {
-                $data->required = array_filter(
-                    $data->required,
-                    function ($property) use ($filter_properties) {
-                        return ! in_array($property, $filter_properties);
-                    },
-                );
-            }
+            switch ($type) {
+                case 'object':
+                    $data->properties->$key = $this->filterProperties($property, $mode);
+                    break;
 
-            foreach ($data->properties as $key => $property) {
-                $data->properties->$key = $this->parseProperty($property, $mode);
+                case 'array':
+                    $property->items = $this->filterProperties($property->items, $mode);
+                    break;
+
+                case 'anyOf':
+                case 'allOf':
+                case 'oneOf':
+                    $property->$type = array_map(
+                        function ($item) use ($mode) {
+                            return $this->filterProperties($item, $mode);
+                        },
+                        $property->$type,
+                    );
+                    break;
+
+                default:
+                    // Unknown type, skip
+                    break;
             }
-        } else {
-            $data = $this->parseProperty($data, $mode);
         }
 
         return $data;
@@ -121,8 +160,7 @@ abstract class AbstractValidator
 
         switch ($type) {
             case 'object':
-                $property = $this->filterProperties($property, $mode);
-                break;
+                throw new \LogicException('Object type should not be here.');
 
             case 'array':
                 $property->items = $this->filterProperties($property->items, $mode);
@@ -188,7 +226,7 @@ abstract class AbstractValidator
             }
 
             // Before we check recursive cases, make sure this object defines a "type".
-            if (! isset($attributes->type)) {
+            if (!isset($attributes->type)) {
                 break;
             }
 

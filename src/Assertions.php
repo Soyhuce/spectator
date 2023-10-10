@@ -180,7 +180,7 @@ class Assertions
             try {
                 return $closure();
             } catch (\Exception $exception) {
-                throw new \ErrorException($exception->getMessage(), $exception->getCode(), E_WARNING, $original['file'], $original['line']);
+                throw new \ErrorException($exception->getMessage(), $exception->getCode(), E_WARNING, $original['file'], $original['line'], $exception);
             }
         };
     }
