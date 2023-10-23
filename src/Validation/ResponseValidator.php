@@ -162,7 +162,7 @@ class ResponseValidator extends AbstractValidator
      */
     protected function body($contentType, $schemaType)
     {
-        $body = $this->response->getContent();
+        $body = $this->response instanceof StreamedResponse ? $this->streamedContent() : $this->response->getContent();
 
         if (in_array($schemaType, ['object', 'array', 'allOf', 'anyOf', 'oneOf'], true)) {
             if (in_array($contentType, ['application/json', 'application/vnd.api+json', 'application/problem+json'])) {
@@ -203,5 +203,22 @@ class ResponseValidator extends AbstractValidator
         }
 
         return $flat;
+    }
+
+    protected function streamedContent(): string
+    {
+        $content = '';
+
+        ob_start(function (string $buffer) use(&$content): string {
+            $content .= $buffer;
+
+            return '';
+        });
+
+        $this->response->sendContent();
+
+        ob_end_clean();
+
+        return $content;
     }
 }
