@@ -9,6 +9,7 @@ use Illuminate\Support\Str;
 use Opis\JsonSchema\Validator;
 use Spectator\Exceptions\ResponseValidationException;
 use Spectator\Exceptions\SchemaValidationException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ResponseValidator extends AbstractValidator
 {
